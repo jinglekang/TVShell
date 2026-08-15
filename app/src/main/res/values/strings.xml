@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TV Shell</string>
+
+    <string name="title_home">TV Shell</string>
+    <string name="subtitle_home">在电视上全屏打开网页</string>
+    <string name="hint_enter_url">输入网址，例如 192.168.1.100:3000</string>
+    <string name="home_tip">用遥控器输入地址，或用手机扫码打开</string>
+    <string name="btn_visit">打开</string>
+    <string name="placeholder_remote_url" translatable="false">http://192.168.1.25:8765</string>
+    <string name="placeholder_example_url" translatable="false">https://example.com</string>
+    <string name="placeholder_about" translatable="false"> </string>
+    <string name="btn_phone_remote">手机遥控</string>
+    <string name="btn_settings">设置</string>
+
+    <string name="title_remote_menu">用手机遥控</string>
+    <string name="subtitle_remote_menu">把手机连到同一 Wi-Fi，扫码即可控制这台电视</string>
+    <string name="qr_remote_description">手机遥控二维码</string>
+    <string name="remote_same_network">请让手机和电视连同一个网络</string>
+    <string name="remote_status_ready">已就绪</string>
+    <string name="btn_close">关闭</string>
+
+    <string name="title_back_menu">菜单</string>
+    <string name="subtitle_back_menu">前进、后退、刷新，或回首页、设置、退出</string>
+    <string name="btn_history_back">后退</string>
+    <string name="btn_history_forward">前进</string>
+    <string name="label_now_playing">当前页面</string>
+    <string name="back_menu_hint">再按返回键回到网页</string>
+    <string name="btn_change_url">首页</string>
+    <string name="btn_reload">刷新</string>
+    <string name="pointer_hint">方向键移动指针，到边缘时滚动页面，确定点击</string>
+    <string name="btn_exit">退出</string>
+
+    <string name="title_settings">设置</string>
+    <string name="btn_back">返回</string>
+    <string name="label_language">语言</string>
+    <string name="lang_system">跟随系统</string>
+    <string name="lang_zh">中文</string>
+    <string name="lang_en">English</string>
+    <string name="section_startup">开机打开的网页</string>
+    <string name="label_startup_url">下次启动时打开</string>
+    <string name="btn_save_start_url">保存</string>
+    <string name="btn_clear">清除</string>
+    <string name="label_user_agent">网页显示方式</string>
+    <string name="section_phone_remote">手机遥控</string>
+    <string name="label_network_interface">使用的网络</string>
+    <string name="remote_address">遥控地址：%1$s</string>
+    <string name="btn_regen_token">更换遥控密钥</string>
+    <string name="section_about">本机信息</string>
+
+    <string name="ua_chrome_desktop">Chrome（电脑）</string>
+    <string name="ua_firefox_desktop">Firefox（电脑）</string>
+    <string name="ua_safari_desktop">Safari（电脑）</string>
+    <string name="ua_chrome_phone">Chrome（手机）</string>
+    <string name="ua_safari_phone">Safari（手机）</string>
+    <string name="ua_android_tv">Android 电视</string>
+
+    <string name="network_wired">有线网络</string>
+    <string name="network_wifi">Wi-Fi</string>
+    <string name="network_hotspot">热点</string>
+    <string name="network_item">%1$s · %2$s   %3$s</string>
+    <string name="msg_no_lan_address">没有可用的局域网</string>
+
+    <string name="msg_start_url_saved">已保存。下次打开应用会进入这个网页。</string>
+    <string name="msg_start_url_cleared">已取消开机自动打开网页</string>
+    <string name="msg_remote_token_regenerated">密钥已更新，请用手机重新扫码</string>
+    <string name="msg_ua_updated">已更换网页显示方式\n%1$s</string>
+    <string name="msg_nic_updated">手机遥控已改用这个网络\n%1$s</string>
+
+    <string name="about_android">系统：Android %1$s</string>
+    <string name="about_device">设备：%1$s %2$s</string>
+    <string name="about_cpu">处理器：%1$s</string>
+    <string name="about_engine">浏览内核：Gecko 115</string>
+    <string name="about_display_mode">网页显示方式：%1$s</string>
+    <string name="about_remote_port">手机遥控端口：8765</string>
+    <string name="about_keep_on">使用时屏幕保持常亮</string>
+    <string name="about_version">版本 %1$s</string>
+
+    <string name="title_error">打不开这个网页</string>
+    <string name="msg_error_hint">请检查网址或网络。也可以用手机扫码换一个地址。</string>
+    <string name="btn_retry">再试一次</string>
+
+    <string name="title_exit">退出</string>
+    <string name="msg_exit_confirm">要退出 TV Shell 吗？</string>
+    <string name="btn_cancel">取消</string>
+    <string name="btn_confirm_exit">退出</string>
+</resources>

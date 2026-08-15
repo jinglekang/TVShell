@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="referrer" content="no-referrer">
+  <title>TV Shell</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="remote-app">
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon">
+          <div class="brand-dot"></div>
+        </div>
+        <div class="brand-info">
+          <span class="brand-title">TV SHELL</span>
+          <span class="brand-sub" data-i18n="brand_sub">用手机控制电视</span>
+        </div>
+      </div>
+      <div id="status-badge" class="badge badge-connecting">
+        <span class="indicator"></span>
+        <span id="status-text" data-i18n="status_connecting">正在连接…</span>
+      </div>
+    </header>
+
+    <section class="card session-card">
+      <div class="card-head">
+        <div class="card-label" id="session-label" data-i18n="label_open_url">在电视上打开网页</div>
+        <span id="refresh-time" class="time-tag" data-i18n="status_live">实时同步</span>
+      </div>
+      <div id="page-meta" class="page-meta" hidden>
+        <div id="current-title" class="tv-title"></div>
+        <div id="current-url" class="tv-url"></div>
+      </div>
+      <div id="loading-indicator" class="loading-tag" style="display:none;" data-i18n="status_loading">正在打开网页…</div>
+      <div class="input-group">
+        <input type="text" id="url-input" data-i18n-placeholder="hint_url" placeholder="输入网址，例如 192.168.1.100:3000" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <button type="button" id="btn-open" class="btn btn-go" onclick="openUrl()" data-i18n-aria="btn_open" aria-label="打开">
+          <svg class="icon-go" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M8 5.5v13l11-6.5z"/>
+          </svg>
+        </button>
+      </div>
+      <div class="quick-prefix">
+        <button type="button" class="chip-btn" onclick="quickFill('http://')">http://</button>
+        <button type="button" class="chip-btn" onclick="quickFill('https://')">https://</button>
+        <button type="button" class="chip-btn" onclick="quickFill(':3000')">:3000</button>
+        <button type="button" class="chip-btn" onclick="quickFill(':8080')">:8080</button>
+        <button type="button" class="chip-btn" onclick="clearInput()" data-i18n="btn_clear">清空</button>
+      </div>
+    </section>
+
+    <section class="card browser-card" id="browser-card" hidden>
+      <div class="card-label" data-i18n="label_browser_controls">网页控制</div>
+      <div class="dpad" id="dpad">
+        <button type="button" class="btn btn-dpad dpad-up" data-key="up" aria-label="up">
+          <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
+        </button>
+        <button type="button" class="btn btn-dpad dpad-left" data-key="left" aria-label="left">
+          <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+        </button>
+        <button type="button" class="btn btn-dpad btn-dpad-ok dpad-ok" data-key="ok">
+          <span data-i18n="btn_ok">确认</span>
+        </button>
+        <button type="button" class="btn btn-dpad dpad-right" data-key="right" aria-label="right">
+          <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+        </button>
+        <button type="button" class="btn btn-dpad dpad-down" data-key="down" aria-label="down">
+          <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+        </button>
+      </div>
+      <div class="action-grid">
+        <button type="button" class="btn btn-action" onclick="historyForward()">
+          <span data-i18n="btn_history_forward">前进</span>
+        </button>
+        <button type="button" class="btn btn-action" onclick="historyBack()">
+          <span data-i18n="btn_history_back">后退</span>
+        </button>
+        <button type="button" class="btn btn-action" onclick="reloadPage()">
+          <span data-i18n="btn_refresh">刷新</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="card paste-card" id="paste-card" hidden>
+      <div class="card-label" data-i18n="label_paste">粘贴到浏览器</div>
+      <div class="paste-group">
+        <textarea id="paste-input" rows="3" data-i18n-placeholder="hint_paste" placeholder="粘贴任意文本"></textarea>
+        <button type="button" id="btn-paste" class="btn btn-go" onclick="pasteToTv()" data-i18n-aria="btn_paste" aria-label="粘贴">
+          <svg class="icon-go" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+          </svg>
+        </button>
+      </div>
+    </section>
+
+    <section class="card app-card">
+      <div class="card-label" data-i18n="label_app_controls">程序控制</div>
+      <div class="action-grid">
+        <button type="button" class="btn btn-action" data-key="back">
+          <span data-i18n="btn_back">返回</span>
+        </button>
+        <button type="button" class="btn btn-action" onclick="showHome()">
+          <span data-i18n="btn_home">首页</span>
+        </button>
+        <button type="button" class="btn btn-action" onclick="showSettings()">
+          <span data-i18n="btn_tv_settings">设置</span>
+        </button>
+      </div>
+    </section>
+
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script src="remote.js"></script>
+</body>
+</html>

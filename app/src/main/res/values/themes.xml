@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.TvBrowser" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/tv_bg</item>
+        <item name="android:colorBackground">@color/tv_bg</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="colorPrimary">@color/tv_accent</item>
+        <item name="colorPrimaryDark">@color/tv_bg</item>
+        <item name="colorAccent">@color/tv_accent</item>
+        <item name="android:textColorPrimary">@color/tv_text</item>
+        <item name="buttonStyle">@style/Widget.TvShell.Button</item>
+    </style>
+
+    <style name="Widget.TvShell.Button" parent="Widget.AppCompat.Button">
+        <item name="android:textAllCaps">false</item>
+        <item name="textAllCaps">false</item>
+    </style>
+</resources>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Canvas -->
+    <color name="tv_bg">#FF0C0C0E</color>
+    <color name="tv_surface">#FF16161A</color>
+    <color name="tv_elevated">#FF26262C</color>
+    <color name="tv_elevated_focus">#FF33333C</color>
+    <color name="tv_input">#FF101014</color>
+    <color name="tv_overlay">#E00C0C0E</color>
+    <color name="tv_divider">#FF2C2C34</color>
+    <color name="tv_qr_card">#FFFFFFFF</color>
+
+    <!-- Type -->
+    <color name="tv_text">#FFF4F4F5</color>
+    <color name="tv_text_secondary">#FFC4C4CC</color>
+    <color name="tv_text_muted">#FF8E8E98</color>
+    <color name="tv_text_hint">#FF5C5C66</color>
+
+    <!-- Brand: only solid fills for the single primary action on a screen -->
+    <color name="tv_accent">#FFE50914</color>
+    <color name="tv_accent_focus">#FFFF1F2C</color>
+    <color name="tv_accent_press">#FFB00710</color>
+
+    <!-- Danger is label color, never the same fill as accent -->
+    <color name="tv_danger_text">#FFFF8A8A</color>
+    <color name="tv_live">#FF4ADE80</color>
+    <color name="tv_focus_stroke">#FFFFFFFF</color>
+</resources>

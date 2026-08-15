@@ -1,0 +1,41 @@
+# Gradle
+.gradle/
+build/
+
+# Kotlin incremental / daemon caches
+.kotlin/
+
+# Local configuration (SDK path, etc)
+local.properties
+
+# Log / OS
+*.log
+.DS_Store
+
+# Android Studio generated files and folders
+captures/
+.externalNativeBuild/
+.cxx/
+*.aab
+*.apk
+*.ap_
+output-metadata.json
+
+# IntelliJ / Android Studio
+*.iml
+.idea/
+misc.xml
+deploymentTargetDropDown.xml
+render.experimental.xml
+
+# Keystore files (decoded keys stay local; base64 copy is committed)
+*.jks
+*.keystore
+!debug.keystore.base64
+.env
+
+# Google Services (e.g. Firebase)
+google-services.json
+
+# Android Profiling
+*.hprof

@@ -1,0 +1,15 @@
+[versions]
+agp = "9.3.1"
+coreKtx = "1.18.0"
+geckoview = "115.0.20230726201356"
+zxing = "3.5.3"
+appcompat = "1.7.0"
+
+[libraries]
+geckoview = { group = "org.mozilla.geckoview", name = "geckoview", version.ref = "geckoview" }
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
