@@ -35,6 +35,10 @@ Android TV 极简 GeckoView 浏览器。不是通用浏览器，只做三件事�
 
 ## 构建
 
+macOS、Windows 和 Linux 均需预先安装 **JetBrains JDK 25（JBRSDK）**。
+Gradle 会检测本地匹配的 JDK；项目不通过 Foojay 或固定下载地址自动安装 JDK。
+如果 JDK 安装在非标准目录，可在本机的 Gradle 用户配置 `gradle.properties` 中设置 `org.gradle.java.installations.paths`，指向 JDK 的 home 目录。
+
 ### Debug 签名
 
 `debugConfig` 使用根目录 `debug.keystore`（密码 `android`，alias `androiddebugkey`）。
