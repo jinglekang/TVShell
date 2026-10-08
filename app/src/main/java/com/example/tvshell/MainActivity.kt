@@ -39,6 +39,8 @@ import com.example.tvshell.remote.RemoteServer
 import com.example.tvshell.remote.RemoteStatus
 import com.example.tvshell.storage.BrowserPreferences
 import org.mozilla.geckoview.GeckoView
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 private const val STATE_VIEW = "state_view"
 private const val POINTER_TAP_DP = 14f
@@ -47,6 +49,7 @@ private const val POINTER_CRUISE_DP_PER_SEC = 360f
 private const val POINTER_MAX_DP_PER_SEC = 780f
 private const val POINTER_RAMP_SEC = 0.55f
 private const val POINTER_HIDE_DELAY_MS = 3000L
+private const val REMOTE_KEY_RELEASE_DELAY_MS = 2000L
 
 class MainActivity : AppCompatActivity(), RemoteCommandListener {
 
@@ -54,6 +57,14 @@ class MainActivity : AppCompatActivity(), RemoteCommandListener {
     private lateinit var browserController: BrowserController
     private lateinit var networkProvider: NetworkAddressProvider
     private var remoteServer: RemoteServer? = null
+    private val qrExecutor = Executors.newSingleThreadExecutor()
+    private var qrTask: Future<*>? = null
+    private var qrRequestUrl: String? = null
+    private var qrGeneration = 0L
+    private val remoteHeldKeys = mutableSetOf<String>()
+    private val remoteKeyReleaseTasks = mutableMapOf<String, Runnable>()
+    @Volatile
+    private var remoteStatus = RemoteStatus()
 
     // UI Views
     private lateinit var geckoView: GeckoView
@@ -284,14 +295,24 @@ class MainActivity : AppCompatActivity(), RemoteCommandListener {
         tvMenuRemoteUrl.text = displayUrl
         tvSettingsIpRemote.text = getString(R.string.remote_address, displayUrl)
 
-        // Generate QR code for mobile scanning
-        val qrBitmap = QrCodeGenerator.generateQrBitmap(
-            content = fullRemoteUrl,
-            width = 512,
-            height = 512
-        )
-        if (qrBitmap != null) {
-            ivMenuQr.setImageBitmap(qrBitmap)
+        // The URL also acts as a cache key. Never show a QR code for an old token/IP.
+        if (qrRequestUrl != fullRemoteUrl) {
+            val generation = ++qrGeneration
+            qrRequestUrl = fullRemoteUrl
+            qrTask?.cancel(true)
+            ivMenuQr.setImageDrawable(null)
+            qrTask = qrExecutor.submit {
+                val bitmap = QrCodeGenerator.generateQrBitmap(fullRemoteUrl, 512, 512)
+                runOnUiThread {
+                    if (isDestroyed || isFinishing || generation != qrGeneration) {
+                        bitmap?.recycle()
+                    } else if (bitmap != null) {
+                        ivMenuQr.setImageBitmap(bitmap)
+                    } else {
+                        qrRequestUrl = null
+                    }
+                }
+            }
         }
 
         browserController.updateRemoteInfo(displayUrl, token)
@@ -493,11 +514,13 @@ class MainActivity : AppCompatActivity(), RemoteCommandListener {
             if (currentState() != ViewState.CONTROL_MENU &&
                 currentState() != ViewState.BACK_MENU &&
                 currentState() != ViewState.SETTINGS &&
-                currentState() != ViewState.ERROR
+                currentState() != ViewState.ERROR &&
+                currentState() != ViewState.BROWSER
             ) {
                 showViewState(ViewState.BROWSER)
             }
         }
+        updateRemoteStatus()
     }
 
     private fun showViewState(viewState: ViewState) {
@@ -561,6 +584,7 @@ class MainActivity : AppCompatActivity(), RemoteCommandListener {
         if (resolved == ViewState.BACK_MENU) {
             updateHistoryButtons(browserController.getCurrentState())
         }
+        updateRemoteStatus()
 
         if (browsing) {
             hideSystemBars()
@@ -653,6 +677,7 @@ class MainActivity : AppCompatActivity(), RemoteCommandListener {
     }
 
     private fun refreshRemoteAddress() {
+        if (isDestroyed || isFinishing) return
         val selected = networkProvider.resolveAddress(preferences.preferredNetworkInterface)
         currentIp = selected?.ip
         updateRemoteEndpoints()
@@ -915,11 +940,14 @@ class MainActivity : AppCompatActivity(), RemoteCommandListener {
 
     private fun advancePointer() {
         val now = SystemClock.uptimeMillis()
-        val dt = (now - lastPointerTick).coerceIn(1L, 24L) / 1000f
+        // Account for dropped frames, while limiting jumps after unusually long pauses.
+        val dt = (now - lastPointerTick).coerceIn(1L, 250L) / 1000f
         lastPointerTick = now
         val density = resources.displayMetrics.density
         val maxSpeed = POINTER_MAX_DP_PER_SEC * density
         val accel = maxSpeed / POINTER_RAMP_SEC
+        val previousVelX = pointerVelX
+        val previousVelY = pointerVelY
         pointerVelX = if (pointerDirX == 0) {
             0f
         } else {
@@ -930,7 +958,10 @@ class MainActivity : AppCompatActivity(), RemoteCommandListener {
         } else {
             (pointerVelY + pointerDirY * accel * dt).coerceIn(-maxSpeed, maxSpeed)
         }
-        applyPointerDelta(pointerVelX * dt, pointerVelY * dt)
+        applyPointerDelta(
+            (previousVelX + pointerVelX) * 0.5f * dt,
+            (previousVelY + pointerVelY) * 0.5f * dt
+        )
     }
 
     private fun applyPointerDelta(dx: Float, dy: Float) {
@@ -1076,8 +1107,22 @@ class MainActivity : AppCompatActivity(), RemoteCommandListener {
             "ok" -> KeyEvent.KEYCODE_DPAD_CENTER
             else -> return
         }
+        remoteKeyReleaseTasks.remove(key)?.let { geckoView.removeCallbacks(it) }
+        if (down) {
+            val release = Runnable { onRemoteKey(key, false) }
+            remoteKeyReleaseTasks[key] = release
+            geckoView.postDelayed(release, REMOTE_KEY_RELEASE_DELAY_MS)
+            // Renew the lease without restarting acceleration on hold heartbeats.
+            if (!remoteHeldKeys.add(key)) return
+        } else if (!remoteHeldKeys.remove(key)) {
+            return
+        }
         val action = if (down) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP
         dispatchKeyEvent(KeyEvent(action, keyCode))
+    }
+
+    private fun releaseRemoteKeys() {
+        remoteHeldKeys.toList().forEach { onRemoteKey(it, false) }
     }
 
     override fun onHistoryBack() {
@@ -1107,11 +1152,14 @@ class MainActivity : AppCompatActivity(), RemoteCommandListener {
         showViewState(ViewState.SETTINGS)
     }
 
-    override fun getStatus(): RemoteStatus {
+    // RemoteServer reads this immutable snapshot on a worker thread, never Android Views.
+    override fun getStatus(): RemoteStatus = remoteStatus
+
+    private fun updateRemoteStatus() {
         val state = browserController.getCurrentState()
         val pageUrl = state.currentUrl.takeIf { BrowserController.isBrowsableUrl(it) }
             ?: preferences.lastSuccessfulUrl.takeIf { BrowserController.isBrowsableUrl(it) }
-        return RemoteStatus(
+        remoteStatus = RemoteStatus(
             connected = true,
             currentUrl = pageUrl,
             title = if (pageUrl != null) state.title else null,
@@ -1149,7 +1197,18 @@ class MainActivity : AppCompatActivity(), RemoteCommandListener {
         }
     }
 
+    override fun onPause() {
+        releaseRemoteKeys()
+        stopPointerMovement()
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        releaseRemoteKeys()
+        stopPointerMovement()
+        qrRequestUrl = null
+        qrTask?.cancel(true)
+        qrExecutor.shutdownNow()
         super.onDestroy()
         networkProvider.stopListening()
         remoteServer?.stop()

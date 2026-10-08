@@ -5,16 +5,24 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import org.json.JSONObject
-import java.io.BufferedReader
+import java.io.IOException
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
-import java.io.InputStreamReader
 import java.io.OutputStream
 import java.net.ServerSocket
+import java.net.InetSocketAddress
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.util.Collections
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 class RemoteServer(
     private val context: Context,
@@ -23,22 +31,56 @@ class RemoteServer(
     private val listener: RemoteCommandListener
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val executor = Executors.newCachedThreadPool()
+    private var acceptExecutor: ExecutorService? = null
+    private var clientExecutor: ThreadPoolExecutor? = null
+    private val clients = Collections.newSetFromMap(ConcurrentHashMap<Socket, Boolean>())
+    @Volatile
     private var serverSocket: ServerSocket? = null
     @Volatile
     private var isRunning = false
 
+    @Synchronized
     fun start() {
         if (isRunning) return
+        val listeningSocket = try {
+            ServerSocket().also { socket ->
+                try {
+                    socket.reuseAddress = true
+                    socket.bind(InetSocketAddress(port))
+                } catch (e: IOException) {
+                    socket.close()
+                    throw e
+                }
+            }
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to bind remote port $port", e)
+            return
+        }
+        val workers = ThreadPoolExecutor(
+            2, 2, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue(8)
+        )
+        val acceptor = Executors.newSingleThreadExecutor()
+        serverSocket = listeningSocket
+        clientExecutor = workers
+        acceptExecutor = acceptor
         isRunning = true
-        executor.execute {
+        acceptor.execute {
             try {
-                serverSocket = ServerSocket(port)
                 Log.i(TAG, "RemoteServer started on port $port")
-                while (isRunning) {
-                    val socket = serverSocket?.accept() ?: break
-                    executor.execute {
-                        handleClient(socket)
+                while (isRunning && serverSocket === listeningSocket) {
+                    val socket = listeningSocket.accept()
+                    synchronized(this) {
+                        if (!isRunning || serverSocket !== listeningSocket) {
+                            socket.close()
+                        } else {
+                            clients.add(socket)
+                            try {
+                                workers.execute { handleClient(socket) }
+                            } catch (e: RejectedExecutionException) {
+                                clients.remove(socket)
+                                socket.close()
+                            }
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -49,6 +91,7 @@ class RemoteServer(
         }
     }
 
+    @Synchronized
     fun stop() {
         isRunning = false
         try {
@@ -57,38 +100,37 @@ class RemoteServer(
             e.printStackTrace()
         }
         serverSocket = null
+        mainHandler.removeCallbacksAndMessages(null)
+        clients.forEach { socket -> runCatching { socket.close() } }
+        clients.clear()
+        clientExecutor?.shutdownNow()
+        acceptExecutor?.shutdownNow()
+        clientExecutor = null
+        acceptExecutor = null
+    }
+
+    private fun postCommand(command: () -> Unit) {
+        mainHandler.post {
+            if (isRunning) command()
+        }
     }
 
     private fun handleClient(socket: Socket) {
         try {
-            socket.soTimeout = 10000
-            val input = socket.getInputStream()
+            socket.soTimeout = 5000
             val output = socket.getOutputStream()
-
-            val reader = BufferedReader(InputStreamReader(input, StandardCharsets.UTF_8))
-            val requestLine = reader.readLine() ?: return
-            val parts = requestLine.split(" ")
-            if (parts.size < 2) return
-
-            val method = parts[0].uppercase()
-            val rawPath = parts[1]
-
-            // Read Headers
-            val headers = mutableMapOf<String, String>()
-            var line: String?
-            var contentLength = 0
-            while (reader.readLine().also { line = it } != null) {
-                if (line.isNullOrBlank()) break
-                val colonIdx = line!!.indexOf(':')
-                if (colonIdx != -1) {
-                    val headerName = line!!.substring(0, colonIdx).trim().lowercase()
-                    val headerVal = line!!.substring(colonIdx + 1).trim()
-                    headers[headerName] = headerVal
-                    if (headerName == "content-length") {
-                        contentLength = headerVal.toIntOrNull() ?: 0
-                    }
-                }
+            val request = try {
+                HttpRequestReader.read(socket.getInputStream()) ?: return
+            } catch (e: HttpRequestException) {
+                sendJson(output, e.statusCode, JSONObject().put("error", e.message).toString())
+                return
+            } catch (e: SocketTimeoutException) {
+                sendJson(output, 408, JSONObject().put("error", "Request timeout").toString())
+                return
             }
+            val method = request.method
+            val rawPath = request.rawPath
+            val headers = request.headers
 
             // Parse URL & Query params
             val pathParts = rawPath.split("?", limit = 2)
@@ -106,18 +148,7 @@ class RemoteServer(
                 }
             }
 
-            // Read Body if POST/PUT
-            var body = ""
-            if (contentLength > 0) {
-                val charArray = CharArray(contentLength)
-                var totalRead = 0
-                while (totalRead < contentLength) {
-                    val read = reader.read(charArray, totalRead, contentLength - totalRead)
-                    if (read == -1) break
-                    totalRead += read
-                }
-                body = String(charArray, 0, totalRead)
-            }
+            val body = request.body
 
             // Handle CORS preflight
             if (method == "OPTIONS") {
@@ -144,8 +175,11 @@ class RemoteServer(
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error handling client", e)
+            if (isRunning && !socket.isClosed) {
+                Log.e(TAG, "Error handling client", e)
+            }
         } finally {
+            clients.remove(socket)
             try {
                 socket.close()
             } catch (e: Exception) {
@@ -191,7 +225,7 @@ class RemoteServer(
                 val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
                 val targetUrl = json.optString("url", "").trim()
                 if (targetUrl.isNotEmpty()) {
-                    mainHandler.post {
+                    postCommand {
                         listener.onOpenUrl(targetUrl)
                     }
                     sendJson(output, 200, JSONObject().put("success", true).toString())
@@ -210,7 +244,7 @@ class RemoteServer(
                     sendJson(output, 400, JSONObject().put("error", "Missing text").toString())
                     return
                 }
-                mainHandler.post {
+                postCommand {
                     listener.onPasteText(text)
                 }
                 sendJson(output, 200, JSONObject().put("success", true).toString())
@@ -229,7 +263,7 @@ class RemoteServer(
                 }
                 val action = json.optString("action", "down").trim().lowercase()
                 val down = action != "up"
-                mainHandler.post {
+                postCommand {
                     listener.onRemoteKey(key, down)
                 }
                 sendJson(output, 200, JSONObject().put("success", true).toString())
@@ -241,7 +275,7 @@ class RemoteServer(
                 }
                 val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
                 val direction = json.optString("direction", "down")
-                mainHandler.post {
+                postCommand {
                     listener.onScroll(direction)
                 }
                 sendJson(output, 200, JSONObject().put("success", true).toString())
@@ -251,7 +285,7 @@ class RemoteServer(
                     sendJson(output, 405, JSONObject().put("error", "Method Not Allowed").toString())
                     return
                 }
-                mainHandler.post {
+                postCommand {
                     listener.onHistoryBack()
                 }
                 sendJson(output, 200, JSONObject().put("success", true).toString())
@@ -261,7 +295,7 @@ class RemoteServer(
                     sendJson(output, 405, JSONObject().put("error", "Method Not Allowed").toString())
                     return
                 }
-                mainHandler.post {
+                postCommand {
                     listener.onHistoryForward()
                 }
                 sendJson(output, 200, JSONObject().put("success", true).toString())
@@ -271,7 +305,7 @@ class RemoteServer(
                     sendJson(output, 405, JSONObject().put("error", "Method Not Allowed").toString())
                     return
                 }
-                mainHandler.post {
+                postCommand {
                     listener.onReload()
                 }
                 sendJson(output, 200, JSONObject().put("success", true).toString())
@@ -281,7 +315,7 @@ class RemoteServer(
                     sendJson(output, 405, JSONObject().put("error", "Method Not Allowed").toString())
                     return
                 }
-                mainHandler.post {
+                postCommand {
                     listener.onShowMenu()
                 }
                 sendJson(output, 200, JSONObject().put("success", true).toString())
@@ -291,7 +325,7 @@ class RemoteServer(
                     sendJson(output, 405, JSONObject().put("error", "Method Not Allowed").toString())
                     return
                 }
-                mainHandler.post {
+                postCommand {
                     listener.onShowHome()
                 }
                 sendJson(output, 200, JSONObject().put("success", true).toString())
@@ -301,7 +335,7 @@ class RemoteServer(
                     sendJson(output, 405, JSONObject().put("error", "Method Not Allowed").toString())
                     return
                 }
-                mainHandler.post {
+                postCommand {
                     listener.onShowSettings()
                 }
                 sendJson(output, 200, JSONObject().put("success", true).toString())

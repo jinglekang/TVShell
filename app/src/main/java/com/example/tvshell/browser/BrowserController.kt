@@ -20,7 +20,8 @@ class BrowserController(
     private val preferences: BrowserPreferences,
     private val onStateChanged: (BrowserState) -> Unit
 ) {
-    private val runtime: GeckoRuntime = TvBrowserApplication.instance.geckoRuntime
+    private val runtime: GeckoRuntime
+        get() = TvBrowserApplication.instance.geckoRuntime
     var session: GeckoSession? = null
         private set
 
@@ -30,10 +31,6 @@ class BrowserController(
         remoteToken = preferences.remoteToken,
         lastSuccessfulUrl = preferences.lastSuccessfulUrl
     )
-
-    init {
-        initSession()
-    }
 
     private fun initSession() {
         val preset = UserAgentPreset.fromId(preferences.userAgentPreset)
@@ -328,7 +325,10 @@ class BrowserController(
     }
 
     fun applyUserAgent() {
-        recoverSession()
+        // Settings are read when the next page opens; keep the home screen lightweight.
+        if (session?.isOpen == true) {
+            recoverSession()
+        }
     }
 
     fun destroy() {
@@ -344,7 +344,9 @@ class BrowserController(
     fun getCurrentState(): BrowserState = currentState
 
     private fun updateState(reducer: (BrowserState) -> BrowserState) {
-        currentState = reducer(currentState)
+        val nextState = reducer(currentState)
+        if (nextState == currentState) return
+        currentState = nextState
         onStateChanged(currentState)
     }
 

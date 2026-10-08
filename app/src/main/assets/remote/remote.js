@@ -131,6 +131,11 @@
   const toast = document.getElementById("toast");
 
   let isConnected = false;
+  let statusPromise = null;
+  let statusTimer = null;
+  let pageActive = true;
+  let keyQueue = Promise.resolve();
+  const keyReleases = [];
 
   function haptic(ms) {
     try {
@@ -159,8 +164,11 @@
   async function apiCall(endpoint, method, body) {
     method = method || "GET";
     const url = endpoint + "?token=" + encodeURIComponent(token);
+    const controller = new AbortController();
+    const timeout = setTimeout(function () { controller.abort(); }, 5000);
     const options = {
       method: method,
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         "X-Remote-Token": token
@@ -169,14 +177,18 @@
     if (body) {
       options.body = JSON.stringify(body);
     }
-    const response = await fetch(url, options);
-    if (!response.ok) {
-      if (response.status === 403) {
-        throw new Error(t("status_bad_key"));
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error(t("status_bad_key"));
+        }
+        throw new Error(t("toast_failed"));
       }
-      throw new Error(t("toast_failed"));
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
     }
-    return await response.json();
   }
 
   function setPageOnlyVisible(pageOpen) {
@@ -186,7 +198,21 @@
     });
   }
 
-  async function fetchStatus() {
+  function fetchStatus() {
+    clearTimeout(statusTimer);
+    statusTimer = null;
+    if (document.hidden || !pageActive) return Promise.resolve();
+    if (statusPromise) return statusPromise;
+    statusPromise = updateStatus().finally(function () {
+      statusPromise = null;
+      if (!document.hidden && pageActive) {
+        statusTimer = setTimeout(fetchStatus, isConnected ? 1000 : 3000);
+      }
+    });
+    return statusPromise;
+  }
+
+  async function updateStatus() {
     try {
       const data = await apiCall("/api/status");
       const nextLang = data.language === "en" ? "en" : "zh";
@@ -266,14 +292,18 @@
     }
   };
 
-  async function sendKey(key, action) {
-    try {
-      await apiCall("/api/key", "POST", { key: key, action: action });
-    } catch (e) {
-      if (action === "down") {
-        showToast(t("toast_action_failed"));
+  function sendKey(key, action) {
+    // A release must never overtake its press on a slow network.
+    keyQueue = keyQueue.then(async function () {
+      try {
+        await apiCall("/api/key", "POST", { key: key, action: action });
+      } catch (e) {
+        if (action === "down") {
+          showToast(t("toast_action_failed"));
+        }
       }
-    }
+    });
+    return keyQueue;
   }
 
   function bindRemoteKey(el) {
@@ -281,22 +311,43 @@
     const key = el.getAttribute("data-key");
     if (!key) return;
     let pressed = false;
+    let pressGeneration = 0;
+    let holdTimer = null;
+    const directional = ["up", "down", "left", "right"].includes(key);
+    const renewHold = async function (generation) {
+      if (!pressed || !directional || generation !== pressGeneration) return;
+      await sendKey(key, "down");
+      if (pressed && generation === pressGeneration) {
+        holdTimer = setTimeout(function () { renewHold(generation); }, 400);
+      }
+    };
     const down = function (e) {
       e.preventDefault();
+      if (document.hidden) return;
       if (pressed) return;
       pressed = true;
+      const generation = ++pressGeneration;
       el.classList.add("is-down");
       haptic(key === "ok" ? 18 : 12);
-      sendKey(key, "down");
+      sendKey(key, "down").then(function () {
+        if (pressed && directional && generation === pressGeneration) {
+          holdTimer = setTimeout(function () { renewHold(generation); }, 400);
+        }
+      });
     };
     const up = function (e) {
       if (e) e.preventDefault();
       if (!pressed) return;
       pressed = false;
+      ++pressGeneration;
+      clearTimeout(holdTimer);
+      holdTimer = null;
       el.classList.remove("is-down");
       sendKey(key, "up");
     };
+    keyReleases.push(up);
     el.addEventListener("pointerdown", down);
+    el.addEventListener("lostpointercapture", up);
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
     el.addEventListener("pointerleave", function (e) {
@@ -308,6 +359,27 @@
   }
 
   document.querySelectorAll("[data-key]").forEach(bindRemoteKey);
+  function releaseKeys() {
+    keyReleases.forEach(function (release) { release(); });
+  }
+  window.addEventListener("blur", releaseKeys);
+  window.addEventListener("pagehide", function () {
+    pageActive = false;
+    releaseKeys();
+    clearTimeout(statusTimer);
+  });
+  window.addEventListener("pageshow", function () {
+    pageActive = true;
+    fetchStatus();
+  });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+      releaseKeys();
+      clearTimeout(statusTimer);
+    } else {
+      fetchStatus();
+    }
+  });
 
   window.historyBack = async function () {
     haptic(14);
@@ -400,5 +472,4 @@
 
   applyI18n();
   fetchStatus();
-  setInterval(fetchStatus, 1000);
 })();

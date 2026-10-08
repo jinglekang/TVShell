@@ -29,6 +29,7 @@ object QrCodeGenerator {
             val matrixHeight = bitMatrix.height
             val pixels = IntArray(matrixWidth * matrixHeight)
             for (y in 0 until matrixHeight) {
+                if (Thread.currentThread().isInterrupted) return null
                 val offset = y * matrixWidth
                 for (x in 0 until matrixWidth) {
                     pixels[offset + x] = if (bitMatrix.get(x, y)) foregroundColor else backgroundColor

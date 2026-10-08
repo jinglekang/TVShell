@@ -75,4 +75,16 @@ APK 输出到 `build/release/`（按 ABI 分包）。真机 32 位电视装 `arm
 
 Kotlin + 传统 View/XML。内核 Mozilla GeckoView 115。二维码 ZXing。配置 SharedPreferences。
 
+内核与会话在首次打开网页时创建；仅进入首页或修改首页设置不会启动内核。二维码后台生成，地址和密钥不变时复用。手机遥控状态轮询等待上一请求完成，页面隐藏时暂停；方向键长按定期续期，失联约两秒后自动松键。
+
+遥控接口请求体最大 256 KiB，HTTP 请求头最大 16 KiB；服务端使用两个请求处理线程和最多八个排队连接，退出时关闭连接及线程池。
+
 不做：标签页、搜索、收藏、下载、账号、系统 WebView、手机 App、WebSocket、云端遥控。
+
+## 验证
+
+Android 构建、HTTP 请求回归测试和 Lint：
+
+```powershell
+.\gradlew.bat testDebugUnitTest assembleDebug lintDebug
+```
